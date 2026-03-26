@@ -37,7 +37,7 @@ public:
 
   bool VisitParmVarDecl(clang::ParmVarDecl *param) {
     auto *f = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
-    if (!f || !->isThisDeclarationADefinition())
+    if (!f || f!->isThisDeclarationADefinition())
       return true;
     param_count++;
     return true;
