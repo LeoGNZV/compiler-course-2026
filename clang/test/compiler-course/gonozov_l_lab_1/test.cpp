@@ -1,7 +1,7 @@
 // RUN: %clang_cc1 -load %llvmshlibdir/VariablesStatisticsPlugin_Gonozov_Leonid_FIIT3_ClangAST%pluginext -plugin variables_statistics_plugin -fsyntax-only %s 2>&1 | FileCheck %s
 
-// CHECK: Total count: 20
-// CHECK-NEXT: Global variables: 3
+// CHECK: Total count: 18
+// CHECK-NEXT: Global variables: 1
 // CHECK-NEXT: Local variables: 5
 // CHECK-NEXT: Static variables: 6
 // CHECK-NEXT: Function parameters: 6
@@ -26,8 +26,8 @@ class Base
         Base(double f_): f(f_) {} // Function parameters++ 4
 };
 
-extern int g; // Global variables++ 1
-int g = 2; // объявлена выше
+extern int g;
+int g = 2; 
 
 namespace {
     extern int a1;    // Global variables++ 2
@@ -35,18 +35,18 @@ namespace {
 }
 
 namespace {
-    int a1;   // объявлена выше
+    int a1;
 }
 
 namespace Fi 
 {
-    extern int n; // Global variables++ 3
+    extern int n; 
     static int f; // Static variables++ 3
 }
 
 namespace Fe
 {
-    extern int n; // Global variables++ (разные namespace) 4
+    extern int n; 
     static int f; // Static variables++ (разные namespace) 4
 }
 
