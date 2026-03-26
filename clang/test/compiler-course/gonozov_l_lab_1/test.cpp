@@ -1,7 +1,7 @@
 // RUN: %clang_cc1 -load %llvmshlibdir/VariablesStatisticsPlugin_Gonozov_Leonid_FIIT3_ClangAST%pluginext -plugin variables_statistics_plugin -fsyntax-only %s 2>&1 | FileCheck %s
 
-// CHECK: Total count: 22
-// CHECK-NEXT: Global variables: 5
+// CHECK: Total count: 20
+// CHECK-NEXT: Global variables: 3
 // CHECK-NEXT: Local variables: 5
 // CHECK-NEXT: Static variables: 6
 // CHECK-NEXT: Function parameters: 6

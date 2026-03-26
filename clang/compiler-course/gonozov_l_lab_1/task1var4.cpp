@@ -23,9 +23,11 @@ public:
       static_count++;
     } else if (var->isFileVarDecl() &&
                var->getStorageClass() == clang::SC_Static) {
-      static_count++;
+      if (var->isThisDeclarationADefinition())
+        static_count++;
     } else if (var->isFileVarDecl()) {
-      global_count++;
+      if (var->isThisDeclarationADefinition())
+        global_count++;
     } else if (var->isLocalVarDecl()) {
       local_count++;
     }
@@ -34,6 +36,9 @@ public:
   }
 
   bool VisitParmVarDecl(clang::ParmVarDecl *param) {
+    auto *f = llvm::dyn_cast<clang::FunctionDecl>(param->getDeclContext());
+    if (!f || !->isThisDeclarationADefinition())
+      return true;
     param_count++;
     return true;
   }
