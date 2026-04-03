@@ -20,7 +20,7 @@ struct ExamplePass : llvm::PassInfoMixin<ExamplePass> {
               auto *lhs = callInst->getOperand(0);
               auto *rhs = callInst->getOperand(1);
               int64_t power =
-                   llvm::dyn_cast<llvm::ConstantInt>(rhs)->getSExtValue();
+                  llvm::dyn_cast<llvm::ConstantInt>(rhs)->getSExtValue();
               if (power >= 0 && power <= 4) {
                 llvm::IRBuilder<> builder(callInst);
                 llvm::Value *newValue = nullptr;
