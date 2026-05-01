@@ -1,61 +1,92 @@
 #include "X86.h"
 #include "X86InstrInfo.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/SmallVector.h"
-#include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineInstrBuilder.h"
 #include "llvm/CodeGen/MachineModuleInfo.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
 #include "llvm/IR/Function.h"
+#include "llvm/IR/Module.h"
+#include "llvm/Pass.h"
 
 using namespace llvm;
 
+#define EPILOG_NAME "Example Module Pass"
+
 namespace {
 
-class GonozovInlineFunctionPass : public MachineFunctionPass {
+class ExampleModulePass : public ModulePass {
 public:
   static char ID;
-  GonozovInlineFunctionPass() : MachineFunctionPass(ID) {}
 
-  bool runOnMachineFunction(MachineFunction &MF) override;
+  ExampleModulePass() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<MachineModuleInfoWrapperPass>();
-    MachineFunctionPass::getAnalysisUsage(AU);
+    ModulePass::getAnalysisUsage(AU);
   }
+
+  StringRef getPassName() const override { return EPILOG_NAME; }
+
+  bool runOnModule(Module &M) override;
 
 private:
   static constexpr unsigned MaxInlineInstrs = 15;
   static constexpr unsigned MaxRecDepth = 3;
 
-  DenseMap<const Function *, unsigned> RecDepth;
+  DenseMap<const Function *, MachineFunction *> MFMap;
 
-  bool tryInline(MachineFunction &Caller, MachineBasicBlock &MBB,
-                 MachineInstr &MI);
+  void buildFunctionMap(Module &M, MachineModuleInfo &MMI);
 
-  bool isInlineCandidate(MachineFunction &MF);
+  bool processFunction(MachineFunction &MF);
+
+  bool tryInline(MachineFunction &Caller,
+                 MachineBasicBlock &MBB,
+                 MachineInstr &MI,
+                 unsigned Depth,
+                 DenseSet<const Function *> &Stack);
+
+  bool isInlineCandidate(MachineFunction &MF) const;
+
+  unsigned countInstrs(MachineFunction &MF) const;
 };
 
-char GonozovInlineFunctionPass::ID = 0;
+char ExampleModulePass::ID = 0;
 
-bool GonozovInlineFunctionPass::isInlineCandidate(MachineFunction &MF) {
-  if (MF.size() != 1)
-    return false;
-
+unsigned ExampleModulePass::countInstrs(MachineFunction &MF) const {
   unsigned Cnt = 0;
-  for (auto &BB : MF) {
-    for (auto &MI : BB) {
-      if (!MI.isDebugInstr())
-        ++Cnt;
-    }
-  }
 
-  return Cnt <= MaxInlineInstrs;
+  for (auto &BB : MF)
+    for (auto &MI : BB)
+      if (!MI.isDebugInstr() && !MI.isMetaInstruction())
+        ++Cnt;
+
+  return Cnt;
 }
 
-bool GonozovInlineFunctionPass::tryInline(MachineFunction &Caller,
-                                          MachineBasicBlock &MBB,
-                                          MachineInstr &MI) {
+bool ExampleModulePass::isInlineCandidate(MachineFunction &MF) const {
+  if (MF.empty())
+    return false;
+
+  return countInstrs(MF) <= MaxInlineInstrs;
+}
+
+void ExampleModulePass::buildFunctionMap(Module &M,
+                                         MachineModuleInfo &MMI) {
+  MFMap.clear();
+
+  for (Function &F : M) {
+    if (F.isDeclaration())
+      continue;
+
+    if (MachineFunction *MF = MMI.getMachineFunction(F))
+      MFMap[&F] = MF;
+  }
+}
+
+bool ExampleModulePass::tryInline(MachineFunction &Caller,
+                                  MachineBasicBlock &MBB,
+                                  MachineInstr &MI,
+                                  unsigned Depth,
+                                  DenseSet<const Function *> &Stack) {
   if (MI.getOpcode() != X86::CALL64pcrel32)
     return false;
 
@@ -63,6 +94,7 @@ bool GonozovInlineFunctionPass::tryInline(MachineFunction &Caller,
     return false;
 
   MachineOperand &Op = MI.getOperand(0);
+
   if (!Op.isGlobal())
     return false;
 
@@ -70,68 +102,71 @@ bool GonozovInlineFunctionPass::tryInline(MachineFunction &Caller,
   if (!CalleeF)
     return false;
 
-  if (RecDepth[CalleeF] >= MaxRecDepth)
+  if (Stack.count(CalleeF))
     return false;
 
   MachineFunction *CalleeMF = nullptr;
 
   if (CalleeF == &Caller.getFunction()) {
-    // рекурсивный вызов
-    CalleeMF = &Caller;
-  } else {
-    auto &MMI = getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
-    CalleeMF = MMI.getMachineFunction(*CalleeF);
-    if (!CalleeMF)
+    if (Depth >= MaxRecDepth)
       return false;
+    CalleeMF = &Caller;
+    Depth++;
+  } else {
+    auto It = MFMap.find(CalleeF);
+    if (It == MFMap.end())
+      return false;
+    CalleeMF = It->second;
   }
 
   if (!isInlineCandidate(*CalleeMF))
     return false;
 
-  ++RecDepth[CalleeF];
+  Stack.insert(CalleeF);
 
-  MachineRegisterInfo &MRI = Caller.getRegInfo();
-  MachineBasicBlock &CalleeBB = CalleeMF->front();
+  MachineRegisterInfo &CallerMRI = Caller.getRegInfo();
+  MachineRegisterInfo &CalleeMRI = CalleeMF->getRegInfo();
 
-  DenseMap<Register, Register> VRegMap;
+  DenseMap<Register, Register> RegMap;
   SmallVector<MachineInstr *, 16> ToClone;
 
-  for (auto &I : CalleeBB) {
+  for (auto &I : CalleeMF->front())
     if (!I.isReturn())
       ToClone.push_back(&I);
-  }
 
   for (MachineInstr *Src : ToClone) {
     MachineInstr *NewMI = Caller.CloneMachineInstr(Src);
 
-    for (MachineOperand &MO : NewMI->operands()) {
-      if (!MO.isReg())
+    for (auto &MO : NewMI->operands()) {
+      if (!MO.isReg() || !MO.getReg().isVirtual())
         continue;
 
-      Register R = MO.getReg();
-      if (!R.isVirtual())
-        continue;
+      Register OldR = MO.getReg();
+      Register NewR;
 
-      auto It = VRegMap.find(R);
-      if (It == VRegMap.end()) {
-        const TargetRegisterClass *RC = MRI.getRegClass(R);
-        Register NewR = MRI.createVirtualRegister(RC);
-        It = VRegMap.insert({R, NewR}).first;
+      auto It = RegMap.find(OldR);
+      if (It == RegMap.end()) {
+        const TargetRegisterClass *RC = CalleeMRI.getRegClass(OldR);
+        NewR = CallerMRI.createVirtualRegister(RC);
+        RegMap[OldR] = NewR;
+      } else {
+        NewR = It->second;
       }
 
-      MO.setReg(It->second);
+      MO.setReg(NewR);
     }
 
-    MBB.insert(MI.getIterator(), NewMI);
+    MBB.insert(MI, NewMI);
   }
 
   MI.eraseFromParent();
 
-  --RecDepth[CalleeF];
+  Stack.erase(CalleeF);
+
   return true;
 }
 
-bool GonozovInlineFunctionPass::runOnMachineFunction(MachineFunction &MF) {
+bool ExampleModulePass::processFunction(MachineFunction &MF) {
   bool Changed = false;
   bool LocalChanged = true;
 
@@ -141,9 +176,12 @@ bool GonozovInlineFunctionPass::runOnMachineFunction(MachineFunction &MF) {
     for (auto &MBB : MF) {
       for (auto It = MBB.begin(); It != MBB.end();) {
         MachineInstr &MI = *It++;
-        if (tryInline(MF, MBB, MI)) {
-          LocalChanged = true;
+
+        DenseSet<const Function *> Stack;
+
+        if (tryInline(MF, MBB, MI, 0, Stack)) {
           Changed = true;
+          LocalChanged = true;
         }
       }
     }
@@ -152,7 +190,21 @@ bool GonozovInlineFunctionPass::runOnMachineFunction(MachineFunction &MF) {
   return Changed;
 }
 
+bool ExampleModulePass::runOnModule(Module &M) {
+  MachineModuleInfo &MMI =
+      getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
+
+  buildFunctionMap(M, MMI);
+
+  bool Changed = false;
+
+  for (auto &KV : MFMap)
+    Changed |= processFunction(*KV.second);
+
+  return Changed;
+}
+
 } // namespace
 
-static RegisterPass<GonozovInlineFunctionPass>
-    X("example-x86-inline", "Machine IR Function Inlining", false, false);
+static RegisterPass<ExampleModulePass>
+    X("example", EPILOG_NAME, false, false);
