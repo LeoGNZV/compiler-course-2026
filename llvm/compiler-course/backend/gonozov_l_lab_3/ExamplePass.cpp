@@ -38,10 +38,8 @@ private:
 
   bool processFunction(MachineFunction &MF);
 
-  bool tryInline(MachineFunction &Caller,
-                 MachineBasicBlock &MBB,
-                 MachineInstr &MI,
-                 unsigned Depth,
+  bool tryInline(MachineFunction &Caller, MachineBasicBlock &MBB,
+                 MachineInstr &MI, unsigned Depth,
                  DenseSet<const Function *> &Stack);
 
   bool isInlineCandidate(MachineFunction &MF) const;
@@ -69,8 +67,7 @@ bool ExampleModulePass::isInlineCandidate(MachineFunction &MF) const {
   return countInstrs(MF) <= MaxInlineInstrs;
 }
 
-void ExampleModulePass::buildFunctionMap(Module &M,
-                                         MachineModuleInfo &MMI) {
+void ExampleModulePass::buildFunctionMap(Module &M, MachineModuleInfo &MMI) {
   MFMap.clear();
 
   for (Function &F : M) {
@@ -83,8 +80,7 @@ void ExampleModulePass::buildFunctionMap(Module &M,
 }
 
 bool ExampleModulePass::tryInline(MachineFunction &Caller,
-                                  MachineBasicBlock &MBB,
-                                  MachineInstr &MI,
+                                  MachineBasicBlock &MBB, MachineInstr &MI,
                                   unsigned Depth,
                                   DenseSet<const Function *> &Stack) {
   if (MI.getOpcode() != X86::CALL64pcrel32)
@@ -191,8 +187,7 @@ bool ExampleModulePass::processFunction(MachineFunction &MF) {
 }
 
 bool ExampleModulePass::runOnModule(Module &M) {
-  MachineModuleInfo &MMI =
-      getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
+  MachineModuleInfo &MMI = getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
 
   buildFunctionMap(M, MMI);
 
@@ -206,5 +201,4 @@ bool ExampleModulePass::runOnModule(Module &M) {
 
 } // namespace
 
-static RegisterPass<ExampleModulePass>
-    X("example", EPILOG_NAME, false, false);
+static RegisterPass<ExampleModulePass> X("example", EPILOG_NAME, false, false);
