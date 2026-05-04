@@ -80,9 +80,9 @@ void InlineFunctionPass::buildFunctionMap(Module &M, MachineModuleInfo &MMI) {
 }
 
 bool InlineFunctionPass::tryInline(MachineFunction &Caller,
-                                  MachineBasicBlock &MBB, MachineInstr &MI,
-                                  unsigned Depth,
-                                  DenseSet<const Function *> &Stack) {
+                                   MachineBasicBlock &MBB, MachineInstr &MI,
+                                   unsigned Depth,
+                                   DenseSet<const Function *> &Stack) {
   if (MI.getOpcode() != X86::CALL64pcrel32)
     return false;
 
@@ -201,4 +201,5 @@ bool InlineFunctionPass::runOnModule(Module &M) {
 
 } // namespace
 
-static RegisterPass<InlineFunctionPass> X("example", INLINE_FUNCTION_PASS, false, false);
+static RegisterPass<InlineFunctionPass> X("example", INLINE_FUNCTION_PASS,
+                                          false, false);
