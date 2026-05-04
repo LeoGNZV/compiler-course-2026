@@ -9,22 +9,22 @@
 
 using namespace llvm;
 
-#define EPILOG_NAME "Example Module Pass"
+#define INLINE_FUNCTION_PASS "Example Module Pass"
 
 namespace {
 
-class ExampleModulePass : public ModulePass {
+class InlineFunctionPass : public ModulePass {
 public:
   static char ID;
 
-  ExampleModulePass() : ModulePass(ID) {}
+  InlineFunctionPass() : ModulePass(ID) {}
 
   void getAnalysisUsage(AnalysisUsage &AU) const override {
     AU.addRequired<MachineModuleInfoWrapperPass>();
     ModulePass::getAnalysisUsage(AU);
   }
 
-  StringRef getPassName() const override { return EPILOG_NAME; }
+  StringRef getPassName() const override { return INLINE_FUNCTION_PASS; }
 
   bool runOnModule(Module &M) override;
 
@@ -47,9 +47,9 @@ private:
   unsigned countInstrs(MachineFunction &MF) const;
 };
 
-char ExampleModulePass::ID = 0;
+char InlineFunctionPass::ID = 0;
 
-unsigned ExampleModulePass::countInstrs(MachineFunction &MF) const {
+unsigned InlineFunctionPass::countInstrs(MachineFunction &MF) const {
   unsigned Cnt = 0;
 
   for (auto &BB : MF)
@@ -60,14 +60,14 @@ unsigned ExampleModulePass::countInstrs(MachineFunction &MF) const {
   return Cnt;
 }
 
-bool ExampleModulePass::isInlineCandidate(MachineFunction &MF) const {
+bool InlineFunctionPass::isInlineCandidate(MachineFunction &MF) const {
   if (MF.empty())
     return false;
 
   return countInstrs(MF) <= MaxInlineInstrs;
 }
 
-void ExampleModulePass::buildFunctionMap(Module &M, MachineModuleInfo &MMI) {
+void InlineFunctionPass::buildFunctionMap(Module &M, MachineModuleInfo &MMI) {
   MFMap.clear();
 
   for (Function &F : M) {
@@ -79,7 +79,7 @@ void ExampleModulePass::buildFunctionMap(Module &M, MachineModuleInfo &MMI) {
   }
 }
 
-bool ExampleModulePass::tryInline(MachineFunction &Caller,
+bool InlineFunctionPass::tryInline(MachineFunction &Caller,
                                   MachineBasicBlock &MBB, MachineInstr &MI,
                                   unsigned Depth,
                                   DenseSet<const Function *> &Stack) {
@@ -162,7 +162,7 @@ bool ExampleModulePass::tryInline(MachineFunction &Caller,
   return true;
 }
 
-bool ExampleModulePass::processFunction(MachineFunction &MF) {
+bool InlineFunctionPass::processFunction(MachineFunction &MF) {
   bool Changed = false;
   bool LocalChanged = true;
 
@@ -186,7 +186,7 @@ bool ExampleModulePass::processFunction(MachineFunction &MF) {
   return Changed;
 }
 
-bool ExampleModulePass::runOnModule(Module &M) {
+bool InlineFunctionPass::runOnModule(Module &M) {
   MachineModuleInfo &MMI = getAnalysis<MachineModuleInfoWrapperPass>().getMMI();
 
   buildFunctionMap(M, MMI);
@@ -201,4 +201,4 @@ bool ExampleModulePass::runOnModule(Module &M) {
 
 } // namespace
 
-static RegisterPass<ExampleModulePass> X("example", EPILOG_NAME, false, false);
+static RegisterPass<InlineFunctionPass> X("example", INLINE_FUNCTION_PASS, false, false);
