@@ -2,9 +2,9 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/Plugins/PassPlugin.h"
-#include "llvm/Support/raw_ostream.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringSet.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -53,7 +53,6 @@ public:
           IntegerAttr::get(IntegerType::get(funcOp.getContext(), 32), count);
 
       funcOp->setAttr("call_count", call_count);
-
     });
 
     // Подсчитываем общее количество операций в модуле
