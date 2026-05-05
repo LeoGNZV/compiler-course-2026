@@ -3,19 +3,20 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/Plugins/PassPlugin.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 using namespace mlir;
 
 namespace {
+// Класс пасса для подсчёта вызовов функций
 class FunctionCallCounterPass
     : public PassWrapper<FunctionCallCounterPass, OperationPass<ModuleOp>> {
 public:
-  // Аргумент командной строки для вызова пасса
   StringRef getArgument() const final { return "FunctionCallCounterPass"; }
-
-  // Описание пасса
   StringRef getDescription() const final {
-    return "Counts amount of times it was called by other functions (func.func) in the module";
+    return "Counts amount of times it was called by other functions "
+           "(func.func) in the module";
   }
 
   void runOnOperation() override {
@@ -25,33 +26,34 @@ public:
     // Ключ - имя функции, значение - счётчик вызовов
     llvm::StringMap<int> callCounts;
 
+    llvm::StringMap<bool> functionNames;
+
     // Собираем все имена функций в модуле
-    llvm::StringSet<> functionNames;
     moduleOp.walk([&](func::FuncOp funcOp) {
-      functionNames.insert(funcOp.getName());
-      callCounts[funcOp.getName()] = 0;
+      std::string funcName = funcOp.getName().str();
+      functionNames[funcName] = true;
+      callCounts[funcName] = 0;
     });
 
+    // Подсчитываем все вызовы функций
     // Проходим по всем операциям вызова в модуле
     moduleOp.walk([&](func::CallOp callOp) {
-      StringRef calleeName = callOp.getCallee();
-      // Если вызываемая функция существует в нашем модуле
-      if (functionNames.contains(calleeName)) {
-        callCounts[calleeName]++;  // Увеличиваем счётчик для этой функции
+      std::string calleeName = callOp.getCallee().str();
+      if (functionNames.count(calleeName)) {
+        callCounts[calleeName]++;
       }
     });
 
     // Добавляем атрибут call_count к каждой функции
     moduleOp.walk([&](func::FuncOp funcOp) {
-      StringRef funcName = funcOp.getName();
+      std::string funcName = funcOp.getName().str();
       int count = callCounts[funcName];
 
-      // Создаём целочисленный атрибут (32-битное целое)
-      IntegerAttr call_count = IntegerAttr::get(
-          IntegerType::get(funcOp.getContext(), 32), count);
+      IntegerAttr call_count =
+          IntegerAttr::get(IntegerType::get(funcOp.getContext(), 32), count);
 
-      // Добавляем атрибут к функции
       funcOp->setAttr("call_count", call_count);
+
     });
 
     // Подсчитываем общее количество операций в модуле
@@ -62,14 +64,17 @@ public:
 };
 } // namespace
 
+// Объявляем и определяем явный идентификатор типа для пасса
 MLIR_DECLARE_EXPLICIT_TYPE_ID(FunctionCallCounterPass)
 MLIR_DEFINE_EXPLICIT_TYPE_ID(FunctionCallCounterPass)
 
+// Функция, возвращающая информацию о плагине пасса
 mlir::PassPluginLibraryInfo getFunctionCallCounterPassPluginInfo() {
   return {MLIR_PLUGIN_API_VERSION, "FunctionCallCounterPass", "1.0",
           []() { mlir::PassRegistration<FunctionCallCounterPass>(); }};
 }
 
+// Внешняя функция, необходимая для загрузки плагина в MLIR
 extern "C" LLVM_ATTRIBUTE_WEAK mlir::PassPluginLibraryInfo
 mlirGetPassPluginInfo() {
   return getFunctionCallCounterPassPluginInfo();
